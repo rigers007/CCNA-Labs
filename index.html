@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CCNA Lab Grader — Auto-Check Your Config</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --blue: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --orange: #d29922;
+    --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--text);
+    line-height: 1.6; min-height: 100vh;
+  }
+  .container { max-width: 900px; margin: 0 auto; padding: 20px; }
+
+  header { text-align: center; padding: 40px 0 30px; }
+  header h1 { font-size: 2em; margin-bottom: 8px; }
+  header h1 span { color: var(--blue); }
+  header p { color: var(--muted); font-size: 1.05em; }
+
+  .step-indicator {
+    display: flex; gap: 8px; justify-content: center; margin: 24px 0;
+  }
+  .step-dot {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--surface); border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 600; color: var(--muted);
+    transition: all 0.3s;
+  }
+  .step-dot.active { border-color: var(--blue); color: var(--blue); background: #58a6ff15; }
+  .step-dot.done { border-color: var(--green); color: var(--green); background: #3fb95015; }
+  .step-line { width: 40px; height: 2px; background: var(--border); align-self: center; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px; margin-bottom: 20px;
+  }
+  .card h2 { font-size: 1.15em; margin-bottom: 16px; color: var(--blue); }
+
+  select, textarea {
+    width: 100%; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; font-size: 15px; font-family: inherit;
+    transition: border-color 0.2s;
+  }
+  select:focus, textarea:focus { outline: none; border-color: var(--blue); }
+  textarea {
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px; min-height: 250px; resize: vertical;
+  }
+
+  .lab-info {
+    margin-top: 12px; padding: 12px 16px;
+    background: #58a6ff10; border-left: 3px solid var(--blue);
+    border-radius: 0 8px 8px 0; font-size: 14px;
+  }
+  .lab-info strong { color: var(--blue); }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 28px; border-radius: 8px; border: none;
+    font-size: 16px; font-weight: 600; cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-primary:hover { background: #79c0ff; }
+  .btn-primary:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+  .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--blue); }
+  .btn-row { display: flex; gap: 12px; justify-content: center; margin-top: 20px; }
+
+  /* Results */
+  .results-header {
+    text-align: center; padding: 20px; margin-bottom: 20px;
+    border-radius: 12px;
+  }
+  .results-header.pass { background: #3fb95015; border: 1px solid #3fb95040; }
+  .results-header.partial { background: #d2992215; border: 1px solid #d2992240; }
+  .results-header.fail { background: #f8514915; border: 1px solid #f8514940; }
+
+  .score { font-size: 3em; font-weight: 700; }
+  .results-header.pass .score { color: var(--green); }
+  .results-header.partial .score { color: var(--orange); }
+  .results-header.fail .score { color: var(--red); }
+  .verdict { font-size: 1.2em; margin-top: 4px; }
+
+  .check-list { list-style: none; }
+  .check-item {
+    padding: 10px 14px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; gap: 10px; font-size: 14px;
+  }
+  .check-item:last-child { border-bottom: none; }
+  .check-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+  .check-pass .check-icon { color: var(--green); }
+  .check-fail .check-icon { color: var(--red); }
+  .check-label { font-weight: 500; }
+  .check-detail { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .check-fix {
+    color: var(--orange); font-size: 13px; margin-top: 4px;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    background: #d2992210; padding: 4px 8px; border-radius: 4px;
+    display: inline-block;
+  }
+
+  .category-header {
+    padding: 8px 14px; font-size: 12px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1px;
+    color: var(--purple); background: #bc8cff10;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .hidden { display: none; }
+
+  .module-tag {
+    display: inline-block; padding: 2px 10px; border-radius: 12px;
+    font-size: 12px; font-weight: 600; margin-left: 8px;
+  }
+  .mod-easy { background: #3fb95020; color: var(--green); }
+  .mod-med { background: #d2992220; color: var(--orange); }
+  .mod-hard { background: #f8514920; color: var(--red); }
+
+  footer {
+    text-align: center; padding: 40px 0 20px;
+    color: var(--muted); font-size: 13px;
+  }
+  footer a { color: var(--blue); text-decoration: none; }
+
+  @media (max-width: 600px) {
+    .container { padding: 12px; }
+    header h1 { font-size: 1.4em; }
+    .score { font-size: 2.2em; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>🖧 CCNA Lab <span>Grader</span></h1>
+    <p>Paste your <code>show running-config</code> and check if you solved it correctly</p>
+  </header>
+
+  <div class="step-indicator">
+    <div class="step-dot active" id="s1">1</div>
+    <div class="step-line"></div>
+    <div class="step-dot" id="s2">2</div>
+    <div class="step-line"></div>
+    <div class="step-dot" id="s3">3</div>
+  </div>
+
+  <!-- STEP 1: Select Lab -->
+  <div id="step1">
+    <div class="card">
+      <h2>📋 Step 1 — Select the lab</h2>
+      <select id="labSelect">
+        <option value="">-- Select a lab --</option>
+      </select>
+      <div id="labInfo" class="lab-info hidden"></div>
+    </div>
+  </div>
+
+  <!-- STEP 2: Paste Config -->
+  <div id="step2" class="hidden">
+    <div class="card">
+      <h2>📝 Step 2 — Paste your configuration</h2>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:12px;">
+        Run <code>show running-config</code> on the main device and paste the output here:
+      </p>
+      <textarea id="configInput" placeholder="paste show running-config here..."></textarea>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="goStep(1)">← Back</button>
+      <button class="btn btn-primary" id="gradeBtn" onclick="grade()">Grade ✓</button>
+    </div>
+  </div>
+
+  <!-- STEP 3: Results -->
+  <div id="step3" class="hidden">
+    <div id="resultsHeader" class="results-header"></div>
+    <div class="card" id="resultsCard">
+      <h2>📊 Check Details</h2>
+      <ul class="check-list" id="checkList"></ul>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="goStep(2)">← Fix your config</button>
+      <button class="btn btn-primary" onclick="goStep(1)">Try another lab</button>
+    </div>
+  </div>
+
+  <footer>
+    Created by <a href="https://github.com/rigers007" target="_blank">Rigers</a> —
+    <a href="https://github.com/rigers007/CCNA-Labs" target="_blank">GitHub Repo</a>
+  </footer>
+</div>
+
+<script>
+// ==================== LAB DEFINITIONS ====================
+const labs = [
+  {
+    id: 1, module: 1, title: "Konfigurim bazë i switch-it", difficulty: "E lehtë",
+    objective: "Konfiguro hostname, banner, passwords, dhe SSH në një switch.",
+    checks: [
+      { cat: "Identiteti", label: "Hostname SW1", test: c => /^hostname\s+SW1$/mi.test(c), fix: "hostname SW1" },
+      { cat: "Identiteti", label: "MOTD Banner", test: c => /^banner\s+motd/mi.test(c), fix: "banner motd #Authorized Access Only#" },
+      { cat: "Siguria", label: "Enable secret", test: c => /^enable\s+secret/mi.test(c), fix: "enable secret class" },
+      { cat: "Siguria", label: "Console password", test: c => /line\s+con\s+0[\s\S]*?password/mi.test(c), fix: "line con 0 → password cisco → login" },
+      { cat: "SSH", label: "Domain name", test: c => /^ip\s+domain[- ]name/mi.test(c), fix: "ip domain-name lab.local" },
+      { cat: "SSH", label: "RSA key", test: c => /^crypto\s+key/mi.test(c) || /ssh.*version/mi.test(c), fix: "crypto key generate rsa general-keys modulus 1024", detail: "Kontrollohet edhe me 'show ip ssh'" },
+      { cat: "SSH", label: "Transport SSH në VTY", test: c => /transport\s+input\s+ssh/mi.test(c), fix: "line vty 0 15 → transport input ssh" },
+      { cat: "SSH", label: "Login local në VTY", test: c => /login\s+local/mi.test(c), fix: "line vty 0 15 → login local" },
+      { cat: "SSH", label: "Username krijuar", test: c => /^username\s+/mi.test(c), fix: "username admin secret admin123" },
+    ]
+  },
+  {
+    id: 2, module: 1, title: "Konfigurim bazë i routerit", difficulty: "E lehtë",
+    objective: "Konfiguro hostname, interfaces, dhe IP addressing.",
+    checks: [
+      { cat: "Identiteti", label: "Hostname R1", test: c => /^hostname\s+R1$/mi.test(c), fix: "hostname R1" },
+      { cat: "Interfaces", label: "G0/0 IP 192.168.1.1", test: c => /interface\s+G(?:ig)?.*?0\/0[\s\S]*?ip\s+address\s+192\.168\.1\.1\s+255\.255\.255\.0/mi.test(c), fix: "int G0/0 → ip address 192.168.1.1 255.255.255.0" },
+      { cat: "Interfaces", label: "G0/1 IP 192.168.2.1", test: c => /interface\s+G(?:ig)?.*?0\/1[\s\S]*?ip\s+address\s+192\.168\.2\.1\s+255\.255\.255\.0/mi.test(c), fix: "int G0/1 → ip address 192.168.2.1 255.255.255.0" },
+      { cat: "Interfaces", label: "Interfaces aktive (no shutdown)", test: c => !/shutdown/mi.test(c.replace(/no\s+shutdown/gi,'')), fix: "no shutdown në të dyja interfaces", detail: "Sigurohu që asnjë interface nuk ka 'shutdown'" },
+      { cat: "Siguria", label: "Enable secret", test: c => /^enable\s+secret/mi.test(c), fix: "enable secret class" },
+      { cat: "Siguria", label: "Banner MOTD", test: c => /^banner\s+motd/mi.test(c), fix: "banner motd #...#" },
+    ]
+  },
+  {
+    id: 3, module: 1, title: "Subnetting me VLSM", difficulty: "E lehtë",
+    objective: "Ndaj 10.0.0.0/24 në subnet VLSM për 3 LAN-e.",
+    checks: [
+      { cat: "LAN A (/26)", label: "Subnet 10.0.0.0/26 (mask .192)", test: c => /ip\s+address\s+10\.0\.0\.1\s+255\.255\.255\.192/mi.test(c), fix: "ip address 10.0.0.1 255.255.255.192" },
+      { cat: "LAN B (/27)", label: "Subnet 10.0.0.64/27 (mask .224)", test: c => /ip\s+address\s+10\.0\.0\.65\s+255\.255\.255\.224/mi.test(c), fix: "ip address 10.0.0.65 255.255.255.224" },
+      { cat: "LAN C (/28)", label: "Subnet 10.0.0.96/28 (mask .240)", test: c => /ip\s+address\s+10\.0\.0\.97\s+255\.255\.255\.240/mi.test(c), fix: "ip address 10.0.0.97 255.255.255.240" },
+    ]
+  },
+  {
+    id: 4, module: 1, title: "VLAN bazike", difficulty: "E lehtë",
+    objective: "Krijo VLAN-e dhe cakto porte.",
+    checks: [
+      { cat: "VLAN", label: "VLAN 10 krijuar", test: c => /^vlan\s+10$/mi.test(c), fix: "vlan 10" },
+      { cat: "VLAN", label: "VLAN 10 emri Sales", test: c => /vlan\s+10[\s\S]*?name\s+Sales/mi.test(c), fix: "vlan 10 → name Sales" },
+      { cat: "VLAN", label: "VLAN 20 krijuar", test: c => /^vlan\s+20$/mi.test(c), fix: "vlan 20" },
+      { cat: "VLAN", label: "VLAN 20 emri IT", test: c => /vlan\s+20[\s\S]*?name\s+IT/mi.test(c), fix: "vlan 20 → name IT" },
+      { cat: "Portet", label: "Fa0/1 ose Fa0/2 në VLAN 10", test: c => /interface\s+Fa.*?0\/[12][\s\S]*?switchport\s+access\s+vlan\s+10/mi.test(c), fix: "int Fa0/1 → switchport mode access → switchport access vlan 10" },
+      { cat: "Portet", label: "Fa0/3 ose Fa0/4 në VLAN 20", test: c => /interface\s+Fa.*?0\/[34][\s\S]*?switchport\s+access\s+vlan\s+20/mi.test(c), fix: "int Fa0/3 → switchport mode access → switchport access vlan 20" },
+      { cat: "Portet", label: "Switchport mode access", test: c => /switchport\s+mode\s+access/mi.test(c), fix: "switchport mode access" },
+    ]
+  },
+  {
+    id: 5, module: 1, title: "Trunking midis switch-eve", difficulty: "E lehtë",
+    objective: "Konfiguro trunk link midis dy switches.",
+    checks: [
+      { cat: "VLAN", label: "VLAN 10 krijuar", test: c => /^vlan\s+10$/mi.test(c), fix: "vlan 10" },
+      { cat: "VLAN", label: "VLAN 20 krijuar", test: c => /^vlan\s+20$/mi.test(c), fix: "vlan 20" },
+      { cat: "Trunk", label: "Switchport mode trunk", test: c => /switchport\s+mode\s+trunk/mi.test(c), fix: "switchport mode trunk" },
+      { cat: "Trunk", label: "Allowed VLANs (10,20)", test: c => /switchport\s+trunk\s+allowed\s+vlan\s+10,\s*20/mi.test(c), fix: "switchport trunk allowed vlan 10,20" },
+      { cat: "Portet", label: "Access ports caktuar", test: c => /switchport\s+access\s+vlan\s+1[0]/mi.test(c), fix: "switchport access vlan 10 (në portet e PC-ve)" },
+    ]
+  },
+  {
+    id: 6, module: 2, title: "Router-on-a-Stick (Inter-VLAN)", difficulty: "Mesatare",
+    objective: "Inter-VLAN routing me subinterfaces.",
+    checks: [
+      { cat: "Subinterfaces", label: "Subinterface .10 krijuar", test: c => /interface\s+G.*?0\/0\.10/mi.test(c), fix: "interface G0/0.10" },
+      { cat: "Subinterfaces", label: "Encapsulation dot1Q 10", test: c => /encapsulation\s+dot1Q\s+10/mi.test(c), fix: "encapsulation dot1Q 10" },
+      { cat: "Subinterfaces", label: "Subinterface .20 krijuar", test: c => /interface\s+G.*?0\/0\.20/mi.test(c), fix: "interface G0/0.20" },
+      { cat: "Subinterfaces", label: "Encapsulation dot1Q 20", test: c => /encapsulation\s+dot1Q\s+20/mi.test(c), fix: "encapsulation dot1Q 20" },
+      { cat: "Subinterfaces", label: "Subinterface .30 krijuar", test: c => /interface\s+G.*?0\/0\.30/mi.test(c), fix: "interface G0/0.30" },
+      { cat: "Subinterfaces", label: "Encapsulation dot1Q 30", test: c => /encapsulation\s+dot1Q\s+30/mi.test(c), fix: "encapsulation dot1Q 30" },
+      { cat: "IP", label: "IP në subinterfaces", test: c => { const m = c.match(/ip\s+address\s+\d+\.\d+\.\d+\.\d+/gi); return m && m.length >= 3; }, fix: "Çdo subinterface duhet IP gateway" },
+    ]
+  },
+  {
+    id: 7, module: 2, title: "Inter-VLAN me SVI (L3 Switch)", difficulty: "Mesatare",
+    objective: "Inter-VLAN routing me SVI.",
+    checks: [
+      { cat: "Routing", label: "IP routing aktivizuar", test: c => /^ip\s+routing$/mi.test(c), fix: "ip routing" },
+      { cat: "SVI", label: "Interface VLAN 10", test: c => /^interface\s+Vlan\s*10$/mi.test(c), fix: "interface vlan 10" },
+      { cat: "SVI", label: "Interface VLAN 20", test: c => /^interface\s+Vlan\s*20$/mi.test(c), fix: "interface vlan 20" },
+      { cat: "SVI", label: "Interface VLAN 30", test: c => /^interface\s+Vlan\s*30$/mi.test(c), fix: "interface vlan 30" },
+      { cat: "SVI", label: "Interface VLAN 99 (Mgmt)", test: c => /^interface\s+Vlan\s*99$/mi.test(c), fix: "interface vlan 99" },
+      { cat: "SVI", label: "IP adresa në SVI-te", test: c => { const m = c.match(/interface\s+Vlan[\s\S]*?ip\s+address/gi); return m && m.length >= 3; }, fix: "ip address <gateway> <mask> në çdo SVI" },
+      { cat: "VLAN", label: "VLAN-et krijuar", test: c => /^vlan\s+10$/mi.test(c) && /^vlan\s+20$/mi.test(c), fix: "vlan 10, vlan 20, vlan 30, vlan 99" },
+    ]
+  },
+  {
+    id: 8, module: 2, title: "STP Verification & Root Bridge", difficulty: "Mesatare",
+    objective: "Verifiko STP dhe manipulo root bridge.",
+    checks: [
+      { cat: "STP", label: "Priority e ndryshuar (4096)", test: c => /spanning-tree\s+vlan\s+\d+\s+priority\s+4096/mi.test(c), fix: "spanning-tree vlan 1 priority 4096" },
+    ]
+  },
+  {
+    id: 9, module: 2, title: "Native VLAN mismatch", difficulty: "Mesatare",
+    objective: "Korrigjo native VLAN mismatch.",
+    checks: [
+      { cat: "Trunk", label: "Switchport mode trunk", test: c => /switchport\s+mode\s+trunk/mi.test(c), fix: "switchport mode trunk" },
+      { cat: "Trunk", label: "Native VLAN 99", test: c => /switchport\s+trunk\s+native\s+vlan\s+99/mi.test(c), fix: "switchport trunk native vlan 99" },
+      { cat: "VLAN", label: "VLAN 99 krijuar", test: c => /^vlan\s+99$/mi.test(c), fix: "vlan 99" },
+    ]
+  },
+  {
+    id: 10, module: 2, title: "Rapid PVST+ dhe PortFast", difficulty: "Mesatare",
+    objective: "Konfiguro Rapid PVST+ me PortFast/BPDU Guard.",
+    checks: [
+      { cat: "STP", label: "Mode rapid-pvst", test: c => /spanning-tree\s+mode\s+rapid-pvst/mi.test(c), fix: "spanning-tree mode rapid-pvst" },
+      { cat: "STP", label: "PortFast në access ports", test: c => /spanning-tree\s+portfast(?!\s+bpduguard)/mi.test(c), fix: "spanning-tree portfast (në access ports)" },
+      { cat: "STP", label: "BPDU Guard", test: c => /spanning-tree\s+(portfast\s+)?bpduguard/mi.test(c) || /spanning-tree\s+bpduguard/mi.test(c), fix: "spanning-tree bpduguard enable" },
+    ]
+  },
+  {
+    id: 11, module: 3, title: "LACP EtherChannel", difficulty: "Mesatare",
+    objective: "Konfiguro LACP EtherChannel.",
+    checks: [
+      { cat: "EtherChannel", label: "Channel-group mode active", test: c => /channel-group\s+\d+\s+mode\s+active/mi.test(c), fix: "channel-group 1 mode active" },
+      { cat: "EtherChannel", label: "Channel-group mode passive", test: c => /channel-group\s+\d+\s+mode\s+passive/mi.test(c), fix: "channel-group 1 mode passive (në switch-in tjetër)", detail: "Ose active+active funksionon gjithashtu" },
+      { cat: "Trunk", label: "Port-Channel si trunk", test: c => /interface\s+Po.*?1[\s\S]*?switchport\s+mode\s+trunk/mi.test(c), fix: "int Po1 → switchport mode trunk" },
+      { cat: "Trunk", label: "Allowed VLANs në Po", test: c => /switchport\s+trunk\s+allowed\s+vlan/mi.test(c), fix: "switchport trunk allowed vlan 10,20" },
+    ]
+  },
+  {
+    id: 12, module: 3, title: "PAgP EtherChannel", difficulty: "Mesatare",
+    objective: "Konfiguro PAgP EtherChannel.",
+    checks: [
+      { cat: "EtherChannel", label: "Channel-group mode desirable", test: c => /channel-group\s+\d+\s+mode\s+desirable/mi.test(c), fix: "channel-group 2 mode desirable" },
+      { cat: "Trunk", label: "Port-Channel si trunk", test: c => /interface\s+Po[\s\S]*?switchport\s+mode\s+trunk/mi.test(c), fix: "int Po2 → switchport mode trunk" },
+    ]
+  },
+  {
+    id: 13, module: 3, title: "L3 EtherChannel", difficulty: "Mesatare",
+    objective: "EtherChannel Layer 3 me IP.",
+    checks: [
+      { cat: "L3", label: "no switchport", test: c => /no\s+switchport/mi.test(c), fix: "no switchport (në portet fizike)" },
+      { cat: "L3", label: "Channel-group LACP", test: c => /channel-group\s+\d+\s+mode\s+active/mi.test(c), fix: "channel-group 1 mode active" },
+      { cat: "L3", label: "IP në Port-Channel", test: c => /interface\s+Po.*?[\s\S]*?ip\s+address\s+10\.0\.0\./mi.test(c), fix: "int Po1 → ip address 10.0.0.1 255.255.255.252" },
+      { cat: "Routing", label: "IP routing", test: c => /^ip\s+routing$/mi.test(c), fix: "ip routing" },
+    ]
+  },
+  {
+    id: 14, module: 3, title: "EtherChannel troubleshooting", difficulty: "Mesatare",
+    objective: "Diagnostiko dhe korrigjo EtherChannel.",
+    checks: [
+      { cat: "EtherChannel", label: "Protokol i njëjtë (LACP ose PAgP)", test: c => {
+        const lacp = /mode\s+(active|passive)/mi.test(c);
+        const pagp = /mode\s+(desirable|auto)/mi.test(c);
+        return (lacp && !pagp) || (!lacp && pagp);
+      }, fix: "Të dy anët duhet LACP ose PAgP — jo mix!" },
+    ]
+  },
+  {
+    id: 15, module: 3, title: "Multi-VLAN trunk mbi EtherChannel", difficulty: "Mesatare",
+    objective: "VLAN + trunk + EtherChannel + SVI.",
+    checks: [
+      { cat: "EtherChannel", label: "LACP channel-group", test: c => /channel-group\s+\d+\s+mode\s+active/mi.test(c), fix: "channel-group 1 mode active" },
+      { cat: "Trunk", label: "Port-Channel trunk", test: c => /interface\s+Po[\s\S]*?switchport\s+mode\s+trunk/mi.test(c), fix: "Po1 → switchport mode trunk" },
+      { cat: "SVI", label: "SVI VLAN 10", test: c => /interface\s+Vlan\s*10[\s\S]*?ip\s+address/mi.test(c), fix: "interface vlan 10 → ip address" },
+      { cat: "SVI", label: "SVI VLAN 20", test: c => /interface\s+Vlan\s*20[\s\S]*?ip\s+address/mi.test(c), fix: "interface vlan 20 → ip address" },
+      { cat: "Routing", label: "IP routing", test: c => /^ip\s+routing$/mi.test(c), fix: "ip routing" },
+    ]
+  },
+  {
+    id: 16, module: 4, title: "Static Routes", difficulty: "Mesatare",
+    objective: "Static routes midis 3 routerave.",
+    checks: [
+      { cat: "Routes", label: "Static route(s) konfiguruar", test: c => /^ip\s+route\s+/mi.test(c), fix: "ip route <network> <mask> <next-hop>" },
+      { cat: "Routes", label: "Minimum 2 static routes", test: c => { const m = c.match(/^ip\s+route\s+/gmi); return m && m.length >= 2; }, fix: "Duhen të paktën 2 static routes për çdo router anësor" },
+    ]
+  },
+  {
+    id: 17, module: 4, title: "Default Route", difficulty: "Mesatare",
+    objective: "Default route drejt ISP.",
+    checks: [
+      { cat: "Routes", label: "Default route (0.0.0.0)", test: c => /ip\s+route\s+0\.0\.0\.0\s+0\.0\.0\.0/mi.test(c), fix: "ip route 0.0.0.0 0.0.0.0 <ISP-next-hop>" },
+    ]
+  },
+  {
+    id: 18, module: 4, title: "Floating Static Route", difficulty: "Mesatare",
+    objective: "Backup link me AD të lartë.",
+    checks: [
+      { cat: "Routes", label: "Primary static route", test: c => /^ip\s+route\s+(?!0\.0\.0\.0)/mi.test(c), fix: "ip route <network> <mask> <primary-next-hop>" },
+      { cat: "Routes", label: "Floating route (AD > 1)", test: c => /ip\s+route\s+\S+\s+\S+\s+\S+\s+\d{2,}/mi.test(c), fix: "ip route <network> <mask> <backup-next-hop> 10" },
+    ]
+  },
+  {
+    id: 19, module: 4, title: "OSPF Single-Area bazë", difficulty: "Mesatare",
+    objective: "OSPF single-area, area 0.",
+    checks: [
+      { cat: "OSPF", label: "Router OSPF process", test: c => /^router\s+ospf\s+\d+/mi.test(c), fix: "router ospf 1" },
+      { cat: "OSPF", label: "Router-id vendosur", test: c => /router-id\s+\d+\.\d+\.\d+\.\d+/mi.test(c), fix: "router-id 1.1.1.1" },
+      { cat: "OSPF", label: "Network statement(s)", test: c => /network\s+\d+\.\d+\.\d+\.\d+\s+\d+\.\d+\.\d+\.\d+\s+area\s+0/mi.test(c), fix: "network <IP> <wildcard> area 0" },
+      { cat: "OSPF", label: "Passive-interface", test: c => /passive-interface/mi.test(c), fix: "passive-interface G0/0 (LAN interface)" },
+    ]
+  },
+  {
+    id: 20, module: 4, title: "OSPF cost & DR/BDR", difficulty: "E vështirë",
+    objective: "Manipulo cost dhe DR/BDR.",
+    checks: [
+      { cat: "OSPF", label: "OSPF process", test: c => /^router\s+ospf/mi.test(c), fix: "router ospf 1" },
+      { cat: "OSPF", label: "OSPF priority ndryshuar", test: c => /ip\s+ospf\s+priority\s+\d+/mi.test(c), fix: "ip ospf priority 100" },
+      { cat: "OSPF", label: "OSPF cost manipuluar", test: c => /ip\s+ospf\s+cost\s+\d+/mi.test(c), fix: "ip ospf cost 100" },
+      { cat: "OSPF", label: "Reference bandwidth", test: c => /auto-cost\s+reference-bandwidth/mi.test(c), fix: "auto-cost reference-bandwidth 10000" },
+    ]
+  },
+  {
+    id: 21, module: 4, title: "OSPF + Default Route Propagation", difficulty: "E vështirë",
+    objective: "Propago default route me OSPF.",
+    checks: [
+      { cat: "OSPF", label: "OSPF process", test: c => /^router\s+ospf/mi.test(c), fix: "router ospf 1" },
+      { cat: "OSPF", label: "Default-information originate", test: c => /default-information\s+originate/mi.test(c), fix: "default-information originate" },
+      { cat: "Routes", label: "Default static route", test: c => /ip\s+route\s+0\.0\.0\.0\s+0\.0\.0\.0/mi.test(c), fix: "ip route 0.0.0.0 0.0.0.0 <ISP>" },
+    ]
+  },
+  {
+    id: 22, module: 5, title: "DHCP Server në Router", difficulty: "Mesatare",
+    objective: "Routeri si DHCP server.",
+    checks: [
+      { cat: "DHCP", label: "DHCP pool krijuar", test: c => /^ip\s+dhcp\s+pool/mi.test(c), fix: "ip dhcp pool LAN10" },
+      { cat: "DHCP", label: "Network statement", test: c => /network\s+192\.168\.10\.0/mi.test(c), fix: "network 192.168.10.0 255.255.255.0" },
+      { cat: "DHCP", label: "Default gateway", test: c => /default-router/mi.test(c), fix: "default-router 192.168.10.1" },
+      { cat: "DHCP", label: "DNS server", test: c => /dns-server/mi.test(c), fix: "dns-server 8.8.8.8" },
+      { cat: "DHCP", label: "Excluded addresses", test: c => /ip\s+dhcp\s+excluded-address/mi.test(c), fix: "ip dhcp excluded-address 192.168.10.1 192.168.10.10" },
+    ]
+  },
+  {
+    id: 23, module: 5, title: "DHCP Relay", difficulty: "Mesatare",
+    objective: "DHCP relay me ip helper-address.",
+    checks: [
+      { cat: "DHCP", label: "DHCP pool (në R1)", test: c => /^ip\s+dhcp\s+pool/mi.test(c), fix: "ip dhcp pool REMOTE" },
+      { cat: "Relay", label: "IP helper-address", test: c => /ip\s+helper-address/mi.test(c), fix: "ip helper-address 10.0.0.1 (në interface drejt PC-ve)" },
+    ]
+  },
+  {
+    id: 24, module: 5, title: "Static NAT dhe Dynamic NAT", difficulty: "Mesatare",
+    objective: "Static NAT + Dynamic NAT.",
+    checks: [
+      { cat: "NAT", label: "Static NAT mapping", test: c => /ip\s+nat\s+inside\s+source\s+static/mi.test(c), fix: "ip nat inside source static 192.168.1.100 203.0.113.10" },
+      { cat: "NAT", label: "NAT pool krijuar", test: c => /ip\s+nat\s+pool/mi.test(c), fix: "ip nat pool NATPOOL 203.0.113.20 203.0.113.30 netmask..." },
+      { cat: "NAT", label: "ip nat inside", test: c => /ip\s+nat\s+inside$/mi.test(c), fix: "ip nat inside (në LAN interface)" },
+      { cat: "NAT", label: "ip nat outside", test: c => /ip\s+nat\s+outside$/mi.test(c), fix: "ip nat outside (në WAN interface)" },
+      { cat: "ACL", label: "ACL për NAT", test: c => /access-list\s+\d+\s+permit/mi.test(c), fix: "access-list 1 permit 192.168.1.0 0.0.0.255" },
+    ]
+  },
+  {
+    id: 25, module: 5, title: "PAT (NAT Overload)", difficulty: "Mesatare",
+    objective: "PAT me interface overload.",
+    checks: [
+      { cat: "NAT", label: "NAT overload", test: c => /ip\s+nat\s+inside\s+source\s+list.*overload/mi.test(c), fix: "ip nat inside source list 1 interface G0/1 overload" },
+      { cat: "NAT", label: "ip nat inside", test: c => /ip\s+nat\s+inside$/mi.test(c), fix: "ip nat inside" },
+      { cat: "NAT", label: "ip nat outside", test: c => /ip\s+nat\s+outside$/mi.test(c), fix: "ip nat outside" },
+      { cat: "ACL", label: "ACL permit", test: c => /access-list\s+\d+\s+permit/mi.test(c), fix: "access-list 1 permit 192.168.1.0 0.0.0.255" },
+    ]
+  },
+  {
+    id: 26, module: 6, title: "Standard ACL", difficulty: "Mesatare",
+    objective: "Standard ACL për kufizim aksesi.",
+    checks: [
+      { cat: "ACL", label: "ACL deny host", test: c => /access-list\s+\d+\s+deny\s+host/mi.test(c) || /deny\s+host/mi.test(c), fix: "access-list 10 deny host 192.168.1.10" },
+      { cat: "ACL", label: "ACL permit any", test: c => /permit\s+any/mi.test(c), fix: "access-list 10 permit any" },
+      { cat: "ACL", label: "ACL aplikuar në interface", test: c => /ip\s+access-group/mi.test(c), fix: "ip access-group 10 out" },
+    ]
+  },
+  {
+    id: 27, module: 6, title: "Extended ACL", difficulty: "E vështirë",
+    objective: "Extended ACL port-specifik.",
+    checks: [
+      { cat: "ACL", label: "Permit TCP port 80 (HTTP)", test: c => /permit\s+tcp.*eq\s+(80|www)/mi.test(c), fix: "permit tcp <source> <dest> eq 80" },
+      { cat: "ACL", label: "Permit TCP port 443 (HTTPS)", test: c => /permit\s+tcp.*eq\s+443/mi.test(c), fix: "permit tcp <source> <dest> eq 443" },
+      { cat: "ACL", label: "Deny rule", test: c => /deny\s+ip/mi.test(c), fix: "deny ip <source> host <server>" },
+      { cat: "ACL", label: "ACL aplikuar (in)", test: c => /ip\s+access-group\s+\d+\s+in/mi.test(c), fix: "ip access-group 100 in (afër burimit)" },
+    ]
+  },
+  {
+    id: 28, module: 6, title: "Port Security", difficulty: "Mesatare",
+    objective: "Port security me sticky MAC.",
+    checks: [
+      { cat: "Security", label: "Port-security aktivizuar", test: c => /switchport\s+port-security$/mi.test(c), fix: "switchport port-security" },
+      { cat: "Security", label: "Maximum 1", test: c => /port-security\s+maximum\s+1/mi.test(c), fix: "switchport port-security maximum 1" },
+      { cat: "Security", label: "Violation shutdown", test: c => /port-security\s+violation\s+shutdown/mi.test(c), fix: "switchport port-security violation shutdown" },
+      { cat: "Security", label: "Sticky MAC", test: c => /port-security\s+mac-address\s+sticky/mi.test(c), fix: "switchport port-security mac-address sticky" },
+    ]
+  },
+  {
+    id: 29, module: 6, title: "ACL + NAT + DHCP kombinuar", difficulty: "E vështirë",
+    objective: "DHCP + PAT + ACL të kombinuara.",
+    checks: [
+      { cat: "DHCP", label: "DHCP pool", test: c => /ip\s+dhcp\s+pool/mi.test(c), fix: "ip dhcp pool LAN" },
+      { cat: "NAT", label: "PAT overload", test: c => /overload/mi.test(c), fix: "ip nat inside source list ... overload" },
+      { cat: "ACL", label: "Extended ACL (permit tcp)", test: c => /permit\s+tcp.*eq\s+(80|443|www)/mi.test(c), fix: "permit tcp ... eq 80" },
+      { cat: "ACL", label: "Deny telnet/SSH", test: c => /deny\s+tcp.*eq\s+(23|22|telnet|ssh)/mi.test(c), fix: "deny tcp ... eq 23 / eq 22" },
+      { cat: "NAT", label: "ip nat inside/outside", test: c => /ip\s+nat\s+inside/mi.test(c) && /ip\s+nat\s+outside/mi.test(c), fix: "ip nat inside + ip nat outside" },
+    ]
+  },
+  {
+    id: 30, module: 7, title: "HSRP bazë", difficulty: "E vështirë",
+    objective: "HSRP gateway redundancy.",
+    checks: [
+      { cat: "HSRP", label: "Standby IP (virtual)", test: c => /standby\s+\d+\s+ip\s+/mi.test(c), fix: "standby 1 ip 192.168.1.1" },
+      { cat: "HSRP", label: "Standby priority", test: c => /standby\s+\d+\s+priority/mi.test(c), fix: "standby 1 priority 110" },
+      { cat: "HSRP", label: "Standby preempt", test: c => /standby\s+\d+\s+preempt/mi.test(c), fix: "standby 1 preempt" },
+    ]
+  },
+  {
+    id: 31, module: 7, title: "HSRP me Tracking", difficulty: "E vështirë",
+    objective: "HSRP tracking për uplink failover.",
+    checks: [
+      { cat: "HSRP", label: "Standby IP", test: c => /standby\s+\d+\s+ip/mi.test(c), fix: "standby 1 ip <virtual-ip>" },
+      { cat: "HSRP", label: "Priority + preempt", test: c => /standby\s+\d+\s+priority/mi.test(c) && /standby\s+\d+\s+preempt/mi.test(c), fix: "standby 1 priority 110 + preempt" },
+      { cat: "HSRP", label: "Track konfiguruar", test: c => /standby\s+\d+\s+track/mi.test(c), fix: "standby 1 track G0/1 decrement 20" },
+    ]
+  },
+  {
+    id: 32, module: 7, title: "HSRP + OSPF + NAT/PAT dual-edge", difficulty: "E vështirë",
+    objective: "Dual-edge me HSRP, OSPF, NAT.",
+    checks: [
+      { cat: "OSPF", label: "OSPF process", test: c => /^router\s+ospf/mi.test(c), fix: "router ospf 1" },
+      { cat: "OSPF", label: "Default-information originate", test: c => /default-information\s+originate/mi.test(c), fix: "default-information originate" },
+      { cat: "HSRP", label: "Standby konfiguruar", test: c => /standby\s+\d+\s+ip/mi.test(c), fix: "standby 1 ip <virtual>" },
+      { cat: "NAT", label: "PAT overload", test: c => /overload/mi.test(c), fix: "ip nat inside source list ... overload" },
+      { cat: "ACL", label: "ACL HTTP/HTTPS", test: c => /permit\s+tcp.*eq\s+(80|443|www)/mi.test(c), fix: "permit tcp ... eq 80/443" },
+    ]
+  },
+  {
+    id: 33, module: 8, title: "Enterprise LAN i plotë", difficulty: "E vështirë",
+    objective: "Enterprise LAN: VLAN, EtherChannel, SVI, DHCP, Port Security.",
+    checks: [
+      { cat: "VLAN", label: "VLAN 10 (Sales)", test: c => /^vlan\s+10$/mi.test(c), fix: "vlan 10" },
+      { cat: "VLAN", label: "VLAN 20 (IT)", test: c => /^vlan\s+20$/mi.test(c), fix: "vlan 20" },
+      { cat: "VLAN", label: "VLAN 30 (HR)", test: c => /^vlan\s+30$/mi.test(c), fix: "vlan 30" },
+      { cat: "EtherChannel", label: "LACP EtherChannel", test: c => /channel-group.*mode\s+active/mi.test(c), fix: "channel-group 1 mode active" },
+      { cat: "SVI", label: "SVI routing", test: c => /^ip\s+routing$/mi.test(c), fix: "ip routing" },
+      { cat: "DHCP", label: "DHCP pools", test: c => /ip\s+dhcp\s+pool/mi.test(c), fix: "ip dhcp pool <name>" },
+      { cat: "Security", label: "PortFast", test: c => /spanning-tree\s+portfast/mi.test(c), fix: "spanning-tree portfast" },
+      { cat: "Security", label: "Port Security", test: c => /switchport\s+port-security/mi.test(c), fix: "switchport port-security" },
+    ]
+  },
+  {
+    id: 34, module: 8, title: "WAN + OSPF + NAT full topology", difficulty: "E vështirë",
+    objective: "WAN me OSPF, NAT, ACL, DHCP relay.",
+    checks: [
+      { cat: "OSPF", label: "OSPF process", test: c => /^router\s+ospf/mi.test(c), fix: "router ospf 1" },
+      { cat: "OSPF", label: "Default-info originate", test: c => /default-information\s+originate/mi.test(c), fix: "default-information originate" },
+      { cat: "NAT", label: "PAT overload", test: c => /overload/mi.test(c), fix: "ip nat ... overload" },
+      { cat: "ACL", label: "Extended ACL", test: c => /permit\s+tcp.*eq/mi.test(c), fix: "ACL me port-specific rules" },
+      { cat: "DHCP", label: "ip helper-address", test: c => /ip\s+helper-address/mi.test(c), fix: "ip helper-address <DHCP-server-IP>" },
+    ]
+  },
+  {
+    id: 36, module: 8, title: "Challenge Lab Final", difficulty: "E vështirë",
+    objective: "Enterprise + WAN + Security + Wireless — integron gjithçka.",
+    checks: [
+      { cat: "VLAN", label: "VLAN-et krijuar", test: c => /^vlan\s+10$/mi.test(c) && /^vlan\s+20$/mi.test(c) && /^vlan\s+30$/mi.test(c), fix: "vlan 10, 20, 30, 99" },
+      { cat: "EtherChannel", label: "LACP EtherChannel", test: c => /channel-group.*mode\s+active/mi.test(c), fix: "channel-group mode active" },
+      { cat: "SVI", label: "SVI inter-VLAN routing", test: c => /^ip\s+routing$/mi.test(c) && /interface\s+Vlan/mi.test(c), fix: "ip routing + interface vlan X" },
+      { cat: "OSPF", label: "OSPF konfiguruar", test: c => /^router\s+ospf/mi.test(c), fix: "router ospf 1" },
+      { cat: "HSRP", label: "HSRP me tracking", test: c => /standby\s+\d+\s+ip/mi.test(c), fix: "standby 1 ip <virtual>" },
+      { cat: "NAT", label: "PAT overload", test: c => /overload/mi.test(c), fix: "ip nat ... overload" },
+      { cat: "ACL", label: "Extended ACL HTTP/HTTPS", test: c => /permit\s+tcp.*eq\s+(80|443)/mi.test(c), fix: "permit tcp ... eq 80/443" },
+      { cat: "Security", label: "Port Security", test: c => /port-security/mi.test(c), fix: "switchport port-security" },
+      { cat: "STP", label: "PortFast + BPDU Guard", test: c => /portfast/mi.test(c), fix: "spanning-tree portfast" },
+      { cat: "DHCP", label: "DHCP pools", test: c => /ip\s+dhcp\s+pool/mi.test(c), fix: "ip dhcp pool" },
+    ]
+  },
+];
+
+// ==================== UI LOGIC ====================
+const labSelect = document.getElementById('labSelect');
+const labInfo = document.getElementById('labInfo');
+const configInput = document.getElementById('configInput');
+
+// Populate dropdown
+const modules = [
+  { n: 1, name: "Bazat" }, { n: 2, name: "Switching" },
+  { n: 3, name: "EtherChannel" }, { n: 4, name: "Routing" },
+  { n: 5, name: "Shërbime" }, { n: 6, name: "Siguri" },
+  { n: 7, name: "FHRP" }, { n: 8, name: "Integrime" }
+];
+
+modules.forEach(m => {
+  const grp = document.createElement('optgroup');
+  grp.label = `Moduli ${m.n} — ${m.name}`;
+  labs.filter(l => l.module === m.n).forEach(l => {
+    const opt = document.createElement('option');
+    opt.value = l.id;
+    const diff = {"E lehtë":"🟢","Mesatare":"🟡","E vështirë":"🔴"}[l.difficulty];
+    opt.textContent = `Lab ${String(l.id).padStart(2,'0')}: ${l.title} ${diff}`;
+    grp.appendChild(opt);
+  });
+  labSelect.appendChild(grp);
+});
+
+labSelect.addEventListener('change', () => {
+  const lab = labs.find(l => l.id === +labSelect.value);
+  if (lab) {
+    labInfo.innerHTML = `<strong>Objective:</strong> ${lab.objective}<br><strong>Checks:</strong> ${lab.checks.length} items will be verified`;
+    labInfo.classList.remove('hidden');
+    goStep(2);
+  } else {
+    labInfo.classList.add('hidden');
+  }
+});
+
+function goStep(n) {
+  ['step1','step2','step3'].forEach((id,i) => {
+    document.getElementById(id).classList.toggle('hidden', i+1 !== n);
+  });
+  ['s1','s2','s3'].forEach((id,i) => {
+    const el = document.getElementById(id);
+    el.classList.remove('active','done');
+    if (i+1 < n) el.classList.add('done');
+    if (i+1 === n) el.classList.add('active');
+  });
+  if (n === 2) configInput.focus();
+  if (n === 1) { labSelect.value = ''; labInfo.classList.add('hidden'); configInput.value = ''; }
+}
+
+function grade() {
+  const config = configInput.value.trim();
+  if (!config) { alert('Paste your running-config!'); return; }
+
+  const lab = labs.find(l => l.id === +labSelect.value);
+  if (!lab) return;
+
+  const results = lab.checks.map(chk => ({
+    ...chk,
+    passed: chk.test(config)
+  }));
+
+  const passed = results.filter(r => r.passed).length;
+  const total = results.length;
+  const pct = Math.round((passed / total) * 100);
+
+  // Header
+  const hdr = document.getElementById('resultsHeader');
+  let cls = 'pass', verdict = '🎉 Excellent! Lab completed successfully!';
+  if (pct < 100 && pct >= 70) { cls = 'partial'; verdict = '⚡ Almost! A few things are missing.'; }
+  if (pct < 70) { cls = 'fail'; verdict = '🔧 Needs work — check the errors below.'; }
+  hdr.className = `results-header ${cls}`;
+  hdr.innerHTML = `
+    <div class="score">${passed}/${total}</div>
+    <div class="verdict">${verdict}</div>
+    <div style="color:var(--muted);margin-top:4px;">Lab ${String(lab.id).padStart(2,'0')}: ${lab.title}</div>
+  `;
+
+  // Check list
+  const list = document.getElementById('checkList');
+  list.innerHTML = '';
+  let lastCat = '';
+  results.forEach(r => {
+    if (r.cat !== lastCat) {
+      lastCat = r.cat;
+      const catEl = document.createElement('li');
+      catEl.className = 'category-header';
+      catEl.textContent = r.cat;
+      list.appendChild(catEl);
+    }
+    const li = document.createElement('li');
+    li.className = `check-item ${r.passed ? 'check-pass' : 'check-fail'}`;
+    li.innerHTML = `
+      <span class="check-icon">${r.passed ? '✅' : '❌'}</span>
+      <div>
+        <div class="check-label">${r.label}</div>
+        ${r.detail ? `<div class="check-detail">${r.detail}</div>` : ''}
+        ${!r.passed && r.fix ? `<div class="check-fix">💡 ${r.fix}</div>` : ''}
+      </div>
+    `;
+    list.appendChild(li);
+  });
+
+  goStep(3);
+}
+</script>
+</body>
+</html>

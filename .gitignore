@@ -1,0 +1,14 @@
+# Packet Tracer backup files
+*.pkz
+*.bak
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
