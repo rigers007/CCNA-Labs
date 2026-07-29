@@ -140,7 +140,9 @@ This material is free for educational use. See [LICENSE](LICENSE) for details.
 
 ## 👤 Author
 
-**Rigers** — Master of Sience in Electronic Engineering, focused on networking, cybersecurity & DevOps.
+**Rigers Maja** — Master of Sience in Electronic Engineering, focused on networking, cybersecurity & DevOps.
+
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-blue?logo=linkedin)](https://www.linkedin.com/in/rigers-maja)
 
 ---
 
