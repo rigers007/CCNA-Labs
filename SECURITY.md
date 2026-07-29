@@ -5,7 +5,7 @@
 If you discover a security vulnerability in this project, please report it responsibly:
 
 1. **Do NOT open a public issue**
-2. Email: [gersi.maja3@gmail.com] *(replace with your actual email)*
+2. Email: [gersi.maja3@gmail.com]
 3. Include a description of the vulnerability and steps to reproduce
 
 I will respond within 48 hours.
