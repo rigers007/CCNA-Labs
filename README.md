@@ -140,7 +140,7 @@ This material is free for educational use. See [LICENSE](LICENSE) for details.
 
 ## 👤 Author
 
-**Rigers** — Master's student in Electronic Engineering, focused on networking, cybersecurity & DevOps.
+**Rigers** — Master of Sience in Electronic Engineering, focused on networking, cybersecurity & DevOps.
 
 ---
 
